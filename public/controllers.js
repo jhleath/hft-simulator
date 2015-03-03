@@ -65,6 +65,12 @@ tradingSimulatorControllers.factory('tradeSocket', ['$rootScope', function($root
     }
 }]);
 
+tradingSimulatorControllers.filter('ago', function() {
+    return function(d) {
+        return moment(d).fromNow();
+    }
+})
+
 tradingSimulatorControllers.controller('HomeController', ['$scope', 'tradeSocket',
   function($scope, tradeSocket) {
       $scope.me = generatePerson()
@@ -110,6 +116,7 @@ tradingSimulatorControllers.controller('HomeController', ['$scope', 'tradeSocket
           $scope.history.push(fillOrder);
 
           var removeFromBooks = function(book, payload, compare, cb) {
+              var toRemove = [];
               for(var i in book) {
                   if(compare(book[i].id, payload)) {
                       if(cb !== undefined) {
@@ -118,11 +125,22 @@ tradingSimulatorControllers.controller('HomeController', ['$scope', 'tradeSocket
                           book[i].quantity -= payload.quantity
                       }
 
-                      if(book[i].quantity == 0) {
-                          book.splice(i, 1);
-                      }
+                      if(cb == undefined) {
+                          if(book[i].quantity == 0) {
+                              book.splice(i, 1);
+                          }
 
-                      break;
+                          break;
+                      } else {
+                          toRemove.push(i);
+                      }
+                  }
+              }
+
+              if(toRemove.length > 0) {
+                  toRemove.reverse();
+                  for (var i in toRemove) {
+                      book.splice(toRemove[i], 1);
                   }
               }
           }
@@ -138,6 +156,11 @@ tradingSimulatorControllers.controller('HomeController', ['$scope', 'tradeSocket
                   $scope.me.cash += price * quantity
               } else {
                   $scope.me.stock += quantity
+
+                  // Refund the poor guy some money
+                  if(order.price != price) {
+                      $scope.me.cash += (order.price - price) * quantity;
+                  }
               }
           });
           

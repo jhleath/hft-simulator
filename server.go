@@ -156,8 +156,11 @@ func (t *tradeServer) fillOrders() {
 
 	// Start the filling algorithm
 	sellIndex, buyIndex := 0, 0
+
+	fmt.Println("Attempting to fill orders...")
 	for {
 		if sellIndex >= len(t.SellBook) || buyIndex >= len(t.BuyBook) {
+			fmt.Println("Ran out of transactions to look at.")
 			return
 		}
 
