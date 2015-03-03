@@ -200,6 +200,12 @@ tradingSimulatorControllers.controller('HomeController', ['$scope', 'tradeSocket
               for(var i in $scope.myOrders) {
                   if($scope.myOrders[i].id == payload.id) {
                       if(payload.cancel) {
+                          if($scope.myOrders[i].sell) {
+                              $scope.me.stock += $scope.myOrders[i].quantity
+                          } else {
+                              $scope.me.cash += $scope.myOrders[i].quantity * $scope.myOrders[i].price
+                          }
+
                           $scope.myOrders.splice(i, 1);
                           break;
                       } else {
