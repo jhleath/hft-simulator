@@ -193,6 +193,8 @@ func (s *simpleTrader) newOrder(o *order) (out []*order) {
 	s.books.newOrder(o)
 
 	if (o.Sell && o.Price < s.Mean) || (!o.Sell && o.Price > s.Mean) {
+		fmt.Println("Taking advantage of Arbitrage condition.")
+
 		newOrder := &order{
 			ID:       rand.Float64(),
 			Quantity: o.Quantity,
@@ -200,6 +202,7 @@ func (s *simpleTrader) newOrder(o *order) (out []*order) {
 			Date:     time.Now(),
 			Sell:     !o.Sell,
 		}
+		s.Outstanding[newOrder.ID] = newOrder
 		out = append(out, newOrder)
 		if newOrder.Sell {
 			s.Stock -= o.Quantity
@@ -216,13 +219,51 @@ func (s *simpleTrader) newOrder(o *order) (out []*order) {
 type marketMakerTrader struct {
 	*simpleTrader
 
-	Timer time.Timer
+	Timer   *time.Timer
+	Timeout time.Duration
 }
 
 func newMarketMakerTrader(mean float64, timeout time.Duration) *marketMakerTrader {
+	simpleTrader := newSimpleTrader(mean)
+	timer := time.NewTimer(timeout)
+
+	go func() {
+		for {
+			<-timer.C
+
+			fmt.Println("Let's make a new trade.")
+			// Now, we make the market immediately
+			bid := simpleTrader.books.Bid()
+			ask := simpleTrader.books.Ask()
+
+			if bid != -1 || ask != -1 {
+				// we have trades
+				if bid == -1 {
+					fmt.Println("Making it at", ask-1)
+					listChannel <- simpleTrader.makeOrder(1, ask-1, true)
+					listChannel <- simpleTrader.makeOrder(1, ask-1, false)
+				} else if (bid+1 < ask) || ask == -1 {
+					fmt.Println("Making it at", bid+1)
+					listChannel <- simpleTrader.makeOrder(1, bid+1, true)
+					listChannel <- simpleTrader.makeOrder(1, bid+1, false)
+				}
+			}
+
+			timer.Reset(timeout)
+		}
+	}()
+
 	return &marketMakerTrader{
-		simpleTrader: newSimpleTrader(mean),
+		simpleTrader: simpleTrader,
+		Timer:        timer,
+		Timeout:      timeout,
 	}
+}
+
+func (m *marketMakerTrader) newOrder(o *order) []*order {
+	m.Timer.Reset(m.Timeout)
+
+	return m.simpleTrader.newOrder(o)
 }
 
 // listChannel *order
