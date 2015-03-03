@@ -73,8 +73,8 @@ tradingSimulatorControllers.filter('ago', function() {
 
 tradingSimulatorControllers.controller('HomeController', ['$scope', 'tradeSocket', '$interval',
   function($scope, tradeSocket, $interval) {
-      var inflation = 0.00005
-      var dividend = 0.00002
+      var inflation = 0.00005;
+      var dividend = 0.00005;
 
       $scope.me = generatePerson()
       $interval(function() {
