@@ -1,0 +1,52 @@
+<h2>Controls</h2>
+<p>Is Round Running? {{ running }}</p>
+<p>
+  <a ng-click="admin.startRound()" class="btn btn-success" href="">Start Round</a>
+  <a ng-click="admin.stopRound()" class="btn btn-warning" href="">Stop Round</a>
+</p>
+<p>
+  <a ng-click="admin.startTrader('hft')" class="btn btn-danger" href="">Start HFT Trader</a>
+  <a ng-click="admin.startTrader('mm')" class="btn btn-default" href="">Start Maker Trader</a>
+  <a ng-click="admin.startTrader('nt')" class="btn btn-default" href="">Start Noise Trader</a>
+</p>
+<h2>Trading</h2>
+<div class="row">
+  <div class="col-xs-6 col-sm-4">
+    <h3>Sell Orders</h3>
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>Price</th>
+          <th>Available</th>
+          <th>Mine</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr ng-repeat="order in sellBook | orderBy: 'price' | limitTo: 10">
+          <td>{{ order.price | currency }}</td>
+          <td>{{ order.quantity }} shares</td>
+          <td><i class="fa fa-check" ng-if="order.me"></i></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="col-xs-6 col-sm-4">
+    <h3>Buy Orders</h3>
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>Price</th>
+          <th>Available</th>
+          <th>Mine</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr ng-repeat="order in buyBook | orderBy: '-price' | limitTo: 10">
+          <td>{{ order.price | currency }}</td>
+          <td>{{ order.quantity }} shares</td>
+          <td><i class="fa fa-check" ng-if="order.me"></i></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

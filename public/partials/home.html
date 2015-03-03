@@ -1,8 +1,14 @@
+<div class="overlay" ng-if="!running">
+  <div class="text-center">
+    <h1><span>Waiting for Round to Start</span></h1>
+  </div>
+</div>
+
 <h2>Information</h2>
 
 <div class="alert alert-success" role="alert">
   <strong>Congratulations!</strong>
-  You have purchased 10 shares of stock at <strong>{{ me.initialPrice | currency }}</strong>.
+  You have purchased 10 shares of stock at <strong>{{ me.initialPrice | currency }}</strong> (where this price was drawn from a uniform distribution from 60 to 140).
 </div>
 
 <div class="row">

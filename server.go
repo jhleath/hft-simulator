@@ -34,13 +34,13 @@ func main() {
 	if *simulate == 0 {
 		go startTradeServer()
 
-		go func() {
-			time.Sleep(3 * time.Second)
-			fmt.Println("Launching the Big Guns!")
-			// newHFTTrader(newSimpleTrader(100))
-			newHFTTrader(newMarketMakerTrader(100, 3*time.Second))
-			<-nilChan
-		}()
+		// go func() {
+		// 	time.Sleep(3 * time.Second)
+		// 	fmt.Println("Launching the Big Guns!")
+		// 	// newHFTTrader(newSimpleTrader(100))
+		// 	newHFTTrader(newMarketMakerTrader(100, 3*time.Second))
+		// 	<-nilChan
+		// }()
 
 		http.Handle("/", http.FileServer(http.Dir("public")))
 
@@ -119,6 +119,7 @@ type tradeServer struct {
 	SellBook sellOrderBook
 	BuyBook  buyOrderBook
 
+	Running         bool
 	OpenConnections traderList
 }
 
@@ -133,11 +134,17 @@ type cancelRequest struct {
 	t  trader
 }
 
+type broadcastRequest struct {
+	Type string
+	Data interface{}
+}
+
 var (
-	listChannel       chan *order          = make(chan *order)
-	connectionChannel chan *connectionInfo = make(chan *connectionInfo)
-	cancelChannel     chan cancelRequest   = make(chan cancelRequest)
-	currentOrderId                         = 0
+	listChannel       chan *order           = make(chan *order)
+	connectionChannel chan *connectionInfo  = make(chan *connectionInfo)
+	cancelChannel     chan cancelRequest    = make(chan cancelRequest)
+	currentOrderId                          = 0
+	broadcastChannel  chan broadcastRequest = make(chan broadcastRequest)
 )
 
 func startTradeServer() {
@@ -145,6 +152,15 @@ func startTradeServer() {
 
 	for {
 		select {
+		case b := <-broadcastChannel:
+			server.OpenConnections.Broadcast(b.Type, b.Data)
+			if b.Type == "startRound" {
+				server.BuyBook = nil
+				server.SellBook = nil
+				server.Running = true
+			} else if b.Type == "stopRound" {
+				server.Running = false
+			}
 		case c := <-connectionChannel:
 			if c.Open {
 				server.OpenConnections = append(server.OpenConnections, c.trader)
@@ -160,6 +176,10 @@ func startTradeServer() {
 				}
 			}
 		case o := <-listChannel:
+			if !server.Running {
+				continue
+			}
+
 			if o.Quantity < 0 {
 				fmt.Println("Discarded negative quantity transaction")
 				continue
@@ -176,6 +196,10 @@ func startTradeServer() {
 			// Go through order books and make any trades necessary
 			server.fillOrders()
 		case req := <-cancelChannel:
+			if !server.Running {
+				continue
+			}
+
 			found := false
 			for i, v := range server.SellBook {
 				if v.ID == req.id {
@@ -305,9 +329,12 @@ func (r *traderConnection) writeMessage(typ string, data interface{}) {
 }
 
 type traderMessage struct {
-	Order    *order
-	GetBooks bool `json:"getbooks"`
-	CancelId float64
+	Order       *order
+	GetBooks    bool `json:"getbooks"`
+	CancelId    float64
+	StartRound  bool
+	StopRound   bool
+	StartTrader string
 }
 
 func newTraderConnection(conn *websocket.Conn) *traderConnection {
@@ -388,6 +415,12 @@ func (r *traderConnection) startConnection() {
 
 			} else if tempOrder.CancelId != 0 {
 				cancelChannel <- cancelRequest{tempOrder.CancelId, r}
+			} else if tempOrder.StartRound {
+				broadcastChannel <- broadcastRequest{"startRound", nil}
+			} else if tempOrder.StopRound {
+				broadcastChannel <- broadcastRequest{"stopRound", nil}
+			} else if tempOrder.StartTrader != "" {
+				// Start them up
 			}
 		}
 	}(r.conn, r.dataChan)

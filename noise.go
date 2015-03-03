@@ -25,76 +25,87 @@ type noiseTrader struct {
 
 	Latency time.Duration
 	Timer   *time.Timer
+	Quit    chan struct{}
 }
 
 func newNoiseTrader(id int, minLatency, maxLatency float64) *noiseTrader {
 	price := (rand.Float64() * 80) + 60
 
+	quit := make(chan struct{})
 	t := &noiseTrader{
 		Cash:     2000 - price*10,
 		Stock:    10,
 		Id:       id,
 		Latency:  time.Duration(math.Trunc((rand.Float64()*(maxLatency-minLatency))+minLatency)) * time.Millisecond,
 		MyTrades: make(map[float64]bool),
+		Quit:     quit,
 	}
 	t.Timer = time.NewTimer(t.newDuration())
 
 	go func() {
 		for {
-			<-t.Timer.C
+			select {
+			case <-t.Timer.C:
 
-			// Make a totally random trade
-			var quantity int
-			if t.Stock > 1 {
-				quantity = rand.Intn(t.Stock) + 1
-			} else {
-				quantity = rand.Intn(10) + 1
+				// Make a totally random trade
+				var quantity int
+				if t.Stock > 1 {
+					quantity = rand.Intn(t.Stock) + 1
+				} else {
+					quantity = rand.Intn(10) + 1
+				}
+
+				price := (rand.Float64() * 80) + 60
+				sell := rand.Intn(2)
+				sellBool := true
+				if sell == 0 {
+					sellBool = false
+					if t.Cash < float64(quantity)*price {
+						// can't trade right now
+						t.Timer.Reset(t.newDuration())
+						continue
+					}
+
+					t.Cash -= float64(quantity) * price
+				} else {
+					if t.Stock < quantity {
+						// can't trade right now
+						t.Timer.Reset(t.newDuration())
+						continue
+					}
+
+					t.Stock -= quantity
+				}
+
+				fmt.Println("Noise trader", t.Id, "able to execute at", price, "for", quantity, "shares", sellBool)
+
+				randId := rand.Float64()
+				t.MyTrades[randId] = true
+
+				go func(p float64, q int) {
+					time.Sleep(t.Latency)
+
+					listChannel <- &order{
+						ID:       randId,
+						Quantity: q,
+						Price:    p,
+						Date:     time.Now(),
+						Sell:     sellBool,
+					}
+				}(price, quantity)
+
+				t.Timer.Reset(t.newDuration())
+			case <-quit:
+				return
 			}
-
-			price := (rand.Float64() * 80) + 60
-			sell := rand.Intn(2)
-			sellBool := true
-			if sell == 0 {
-				sellBool = false
-				if t.Cash < float64(quantity)*price {
-					// can't trade right now
-					t.Timer.Reset(t.newDuration())
-					continue
-				}
-
-				t.Cash -= float64(quantity) * price
-			} else {
-				if t.Stock < quantity {
-					// can't trade right now
-					t.Timer.Reset(t.newDuration())
-					continue
-				}
-
-				t.Stock -= quantity
-			}
-
-			fmt.Println("Noise trader", t.Id, "able to execute at", price, "for", quantity, "shares", sellBool)
-
-			randId := rand.Float64()
-			t.MyTrades[randId] = true
-
-			go func(p float64, q int) {
-				time.Sleep(t.Latency)
-
-				listChannel <- &order{
-					ID:       randId,
-					Quantity: q,
-					Price:    p,
-					Date:     time.Now(),
-					Sell:     sellBool,
-				}
-			}(price, quantity)
-
-			t.Timer.Reset(t.newDuration())
 		}
 	}()
 
 	return t
+}
+
+func (n *noiseTrader) shutdown() {
+	n.Quit <- struct{}{}
 }
 
 func (n *noiseTrader) newDuration() time.Duration {

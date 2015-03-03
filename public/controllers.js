@@ -76,11 +76,32 @@ tradingSimulatorControllers.controller('HomeController', ['$scope', 'tradeSocket
       var inflation = 0.0005;
       var dividend = 0.0005;
 
-      $scope.me = generatePerson()
-      $interval(function() {
-          $scope.me.cash -= ($scope.me.cash * inflation)
-          $scope.me.cash += ($scope.me.stock * $scope.lastPrice * dividend)
-      }, 1000)
+      $scope.admin = {
+          startRound: function() {
+              tradeSocket.send({
+                  StartRound: true,
+              })
+          },
+          stopRound: function() {
+              tradeSocket.send({
+                  StopRound: true,
+              })
+          },
+          startTrader: function(typ) {
+              tradeSocket.send({
+                  StartTrader: typ,
+              })
+          }
+      }
+
+      $scope.running = false;
+
+      // $scope.me = generatePerson()
+      // $interval(function() {
+      //     $scope.me.cash -= ($scope.me.cash * inflation)
+      //     $scope.me.cash += ($scope.me.stock * $scope.lastPrice * dividend)
+      // }, 1000)
+      $scope.me = {};
 
       $scope.global = {
           traders: 1,
@@ -92,6 +113,29 @@ tradingSimulatorControllers.controller('HomeController', ['$scope', 'tradeSocket
       $scope.lastPrice = $scope.me.initialPrice;
       $scope.buyBook = [];
       $scope.sellBook = [];
+
+      var runner, timer;
+      tradeSocket.registerHandler("startRound", function(data) {
+          $scope.roundStart = moment()
+          $scope.me = generatePerson()
+          runner = $interval(function() {
+              $scope.me.cash -= ($scope.me.cash * inflation)
+              $scope.me.cash += ($scope.me.stock * $scope.lastPrice * dividend)
+          }, 1000)
+
+          // Reset the gameboard
+          $scope.lastPrice = $scope.me.initialPrice;
+          $scope.buyBook = [];
+          $scope.sellBook = [];
+          $scope.myOrders = [];
+          $scope.history = [];
+
+          $scope.running = true;
+      });
+      tradeSocket.registerHandler("stopRound", function(data) {
+          $scope.running = false;
+          $interval.cancel(runner);
+      })
 
       tradeSocket.registerHandler("newOrder", function(data) {
           console.log("Got new order...")

@@ -6,6 +6,10 @@ var tradingSimulator = angular.module('tradingSimulator', [
 tradingSimulator.config(['$routeProvider',
   function($routeProvider) {
     $routeProvider
+      .when('/admin', {
+          controller: "HomeController",
+          templateUrl: "partials/admin.html",
+      })
       .when('/home', {
           controller: "HomeController",
           templateUrl: "partials/home.html",

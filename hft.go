@@ -95,6 +95,9 @@ func (s *hftTrader) writeMessage(typ string, data interface{}) {
 			m["price"].(float64),
 		)
 		s.placeOrder(out...)
+	} else if typ == "stopRound" {
+		s.shutdown()
+		connectionChannel <- &connectionInfo{s, false}
 	} else {
 		fmt.Println("Didn't respond to type...", typ)
 	}
@@ -112,6 +115,7 @@ func (s *hftTrader) placeOrder(o ...*order) {
 type autoTrader interface {
 	newOrder(o *order) []*order
 	filledOrder(sell *order, buy *order, q int, p float64) []*order
+	shutdown()
 }
 
 type simpleTrader struct {
@@ -223,46 +227,53 @@ func (s *simpleTrader) newOrder(o *order) (out []*order) {
 	return
 }
 
+func (s *simpleTrader) shutdown() {}
+
 type marketMakerTrader struct {
 	*simpleTrader
 
 	Timer   *time.Timer
+	Quit    chan struct{}
 	Timeout time.Duration
 }
 
 func newMarketMakerTrader(mean float64, timeout time.Duration) *marketMakerTrader {
 	simpleTrader := newSimpleTrader(mean)
 	timer := time.NewTimer(timeout)
+	quit := make(chan struct{})
 
 	go func() {
 		for {
-			<-timer.C
+			select {
+			case <-timer.C:
+				// fmt.Println("Let's make a new trade.")
+				// Now, we make the market immediately
+				bid := simpleTrader.books.Bid()
+				ask := simpleTrader.books.Ask()
 
-			// fmt.Println("Let's make a new trade.")
-			// Now, we make the market immediately
-			bid := simpleTrader.books.Bid()
-			ask := simpleTrader.books.Ask()
-
-			if bid != -1 || ask != -1 {
-				// we have trades
-				if bid == -1 && ask > 101 {
-					fmt.Println("Making it at", ask-1)
-					sellOrder, buyOrder := simpleTrader.makeOrder(1, ask-1, true), simpleTrader.makeOrder(1, ask-1, false)
-					simpleTrader.MyTrades[sellOrder.ID] = sellOrder
-					simpleTrader.MyTrades[buyOrder.ID] = buyOrder
-					listChannel <- sellOrder
-					listChannel <- buyOrder
-				} else if (bid+1 < ask) || (ask == -1 && bid < 99) {
-					fmt.Println("Making it at", bid+1)
-					sellOrder, buyOrder := simpleTrader.makeOrder(1, bid+1, true), simpleTrader.makeOrder(1, bid+1, false)
-					simpleTrader.MyTrades[sellOrder.ID] = sellOrder
-					simpleTrader.MyTrades[buyOrder.ID] = buyOrder
-					listChannel <- sellOrder
-					listChannel <- buyOrder
+				if bid != -1 || ask != -1 {
+					// we have trades
+					if bid == -1 && ask > 101 {
+						fmt.Println("Making it at", ask-1)
+						sellOrder, buyOrder := simpleTrader.makeOrder(1, ask-1, true), simpleTrader.makeOrder(1, ask-1, false)
+						simpleTrader.MyTrades[sellOrder.ID] = sellOrder
+						simpleTrader.MyTrades[buyOrder.ID] = buyOrder
+						listChannel <- sellOrder
+						listChannel <- buyOrder
+					} else if (bid+1 < ask) || (ask == -1 && bid < 99) {
+						fmt.Println("Making it at", bid+1)
+						sellOrder, buyOrder := simpleTrader.makeOrder(1, bid+1, true), simpleTrader.makeOrder(1, bid+1, false)
+						simpleTrader.MyTrades[sellOrder.ID] = sellOrder
+						simpleTrader.MyTrades[buyOrder.ID] = buyOrder
+						listChannel <- sellOrder
+						listChannel <- buyOrder
+					}
 				}
-			}
 
-			timer.Reset(timeout)
+				timer.Reset(timeout)
+			case <-quit:
+				return
+			}
 		}
 	}()
 
@@ -270,7 +281,12 @@ func newMarketMakerTrader(mean float64, timeout time.Duration) *marketMakerTrade
 		simpleTrader: simpleTrader,
 		Timer:        timer,
 		Timeout:      timeout,
+		Quit:         quit,
 	}
+}
+
+func (m *marketMakerTrader) shutdown() {
+	m.Quit <- struct{}{}
 }
 
 func (m *marketMakerTrader) newOrder(o *order) []*order {
