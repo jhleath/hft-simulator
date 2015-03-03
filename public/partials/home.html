@@ -161,7 +161,7 @@
     </tr>
   </thead>
   <tbody>
-    <tr ng-repeat="trade in history">
+    <tr ng-repeat="trade in history | orderBy:'-date' | limitTo: 10 ">
       <td>{{ trade.date | ago }}</td>
       <td>{{ trade.price | currency }}</td>
       <td>{{ trade.quantity }}</td>
