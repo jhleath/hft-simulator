@@ -245,14 +245,14 @@ func newMarketMakerTrader(mean float64, timeout time.Duration) *marketMakerTrade
 
 			if bid != -1 || ask != -1 {
 				// we have trades
-				if bid == -1 {
+				if bid == -1 && ask > 101 {
 					fmt.Println("Making it at", ask-1)
 					sellOrder, buyOrder := simpleTrader.makeOrder(1, ask-1, true), simpleTrader.makeOrder(1, ask-1, false)
 					simpleTrader.MyTrades[sellOrder.ID] = sellOrder
 					simpleTrader.MyTrades[buyOrder.ID] = buyOrder
 					listChannel <- sellOrder
 					listChannel <- buyOrder
-				} else if (bid+1 < ask) || ask == -1 {
+				} else if (bid+1 < ask) || (ask == -1 && bid < 99) {
 					fmt.Println("Making it at", bid+1)
 					sellOrder, buyOrder := simpleTrader.makeOrder(1, bid+1, true), simpleTrader.makeOrder(1, bid+1, false)
 					simpleTrader.MyTrades[sellOrder.ID] = sellOrder
