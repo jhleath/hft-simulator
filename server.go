@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"math"
+	"math/rand"
 	"net/http"
 	"sort"
 	"syscall"
@@ -22,31 +24,53 @@ var upgrader = websocket.Upgrader{
 var nilChan chan struct{}
 
 func main() {
-	go startTradeServer()
+	var (
+		simulate = flag.Int("simulate", 0, "")
+	)
+	flag.Parse()
 
-	go func() {
-		time.Sleep(3 * time.Second)
-		fmt.Println("Launching the Big Guns!")
-		// newHFTTrader(newSimpleTrader(100))
-		newHFTTrader(newMarketMakerTrader(100, 3*time.Second))
+	rand.Seed(time.Now().Unix())
+
+	if *simulate == 0 {
+		go startTradeServer()
+
+		go func() {
+			time.Sleep(3 * time.Second)
+			fmt.Println("Launching the Big Guns!")
+			// newHFTTrader(newSimpleTrader(100))
+			newHFTTrader(newMarketMakerTrader(100, 3*time.Second))
+			<-nilChan
+		}()
+
+		http.Handle("/", http.FileServer(http.Dir("public")))
+
+		http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+			conn, err := upgrader.Upgrade(w, r, nil)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+
+			// We now have a conn...
+			t := newTraderConnection(conn)
+			t.startConnection()
+		})
+
+		log.Fatal(http.ListenAndServe(":8080", nil))
+	} else {
+		go startTradeServer()
+
+		go func() {
+			fmt.Println("Launching HFT")
+			newHFTTrader(newSimpleTrader(100))
+			<-nilChan
+		}()
+
+		fmt.Println("Generating", *simulate, "noise traders")
+		generateNoiseTraders(*simulate)
+
 		<-nilChan
-	}()
-
-	http.Handle("/", http.FileServer(http.Dir("public")))
-
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-
-		// We now have a conn...
-		t := newTraderConnection(conn)
-		t.startConnection()
-	})
-
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	}
 }
 
 type trader interface {
@@ -136,6 +160,11 @@ func startTradeServer() {
 				}
 			}
 		case o := <-listChannel:
+			if o.Quantity < 0 {
+				fmt.Println("Discarded negative quantity transaction")
+				continue
+			}
+
 			server.OpenConnections.Broadcast("newOrder", o)
 
 			if o.Sell {
@@ -193,6 +222,8 @@ func startTradeServer() {
 }
 
 func (t *tradeServer) broadcastFilledOrder(sell, buy *order, price float64, quantity int) {
+	fmt.Println("Server filled order", sell.ID, buy.ID, "for price", price, "and q", quantity)
+
 	t.OpenConnections.Broadcast("filledOrder", map[string]interface{}{
 		"sellOrder": sell,
 		"buyOrder":  buy,
@@ -239,21 +270,21 @@ func (t *tradeServer) fillOrders() {
 
 		if buyOrder.Quantity == sellOrder.Quantity {
 			// Drop them both
-			t.broadcastFilledOrder(sellOrder, buyOrder, strikePrice, buyOrder.Quantity)
 			t.deleteOrder(buyOrder, buyIndex)
 			t.deleteOrder(sellOrder, sellIndex)
+			t.broadcastFilledOrder(sellOrder, buyOrder, strikePrice, buyOrder.Quantity)
 			continue
 		} else if buyOrder.Quantity > sellOrder.Quantity {
 			// drop sell, alter buy
-			t.broadcastFilledOrder(sellOrder, buyOrder, strikePrice, sellOrder.Quantity)
-			t.deleteOrder(sellOrder, sellIndex)
 			buyOrder.Quantity -= sellOrder.Quantity
+			t.deleteOrder(sellOrder, sellIndex)
+			t.broadcastFilledOrder(sellOrder, buyOrder, strikePrice, sellOrder.Quantity)
 			continue
 		} else {
 			// drop buy, alter sell
+			sellOrder.Quantity -= buyOrder.Quantity
+			t.deleteOrder(buyOrder, buyIndex)
 			t.broadcastFilledOrder(sellOrder, buyOrder, strikePrice, buyOrder.Quantity)
-			t.deleteOrder(sellOrder, sellIndex)
-			buyOrder.Quantity -= sellOrder.Quantity
 			continue
 		}
 	}

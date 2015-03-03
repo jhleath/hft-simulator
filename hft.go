@@ -187,7 +187,7 @@ func (s *simpleTrader) filledOrder(sell *order, buy *order, q int, p float64) (o
 
 	}
 
-	fmt.Println("Trader Update", s.Cash, "dollars", s.Stock, "shares")
+	fmt.Println("HFT Trader Update", s.Cash, "dollars", s.Stock, "shares")
 	return
 }
 
@@ -200,7 +200,7 @@ func (s *simpleTrader) newOrder(o *order) (out []*order) {
 	}
 
 	if (o.Sell && o.Price < s.Mean) || (!o.Sell && o.Price > s.Mean) {
-		fmt.Println("Taking advantage of Arbitrage condition.")
+		fmt.Println("Taking advantage of Arbitrage condition.", !o.Sell, o.Quantity, o.Price)
 
 		newOrder := &order{
 			ID:       rand.Float64(),
