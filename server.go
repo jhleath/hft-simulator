@@ -25,7 +25,7 @@ func main() {
 	go startTradeServer()
 
 	go func() {
-		time.Sleep(10 * time.Second)
+		time.Sleep(3 * time.Second)
 		fmt.Println("Launching the Big Guns!")
 		// newHFTTrader(newSimpleTrader(100))
 		newHFTTrader(newMarketMakerTrader(100, 3*time.Second))

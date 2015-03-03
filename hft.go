@@ -121,6 +121,7 @@ type simpleTrader struct {
 
 	books       *traderBook
 	Outstanding map[float64]*order
+	MyTrades    map[float64]*order
 }
 
 func newSimpleTrader(mean float64) *simpleTrader {
@@ -132,6 +133,7 @@ func newSimpleTrader(mean float64) *simpleTrader {
 		Stock:       10,
 		books:       &traderBook{},
 		Outstanding: make(map[float64]*order),
+		MyTrades:    make(map[float64]*order),
 	}
 }
 
@@ -192,6 +194,11 @@ func (s *simpleTrader) filledOrder(sell *order, buy *order, q int, p float64) (o
 func (s *simpleTrader) newOrder(o *order) (out []*order) {
 	s.books.newOrder(o)
 
+	// Don't trade on our trades
+	if _, ok := s.MyTrades[o.ID]; ok {
+		return
+	}
+
 	if (o.Sell && o.Price < s.Mean) || (!o.Sell && o.Price > s.Mean) {
 		fmt.Println("Taking advantage of Arbitrage condition.")
 
@@ -231,7 +238,7 @@ func newMarketMakerTrader(mean float64, timeout time.Duration) *marketMakerTrade
 		for {
 			<-timer.C
 
-			fmt.Println("Let's make a new trade.")
+			// fmt.Println("Let's make a new trade.")
 			// Now, we make the market immediately
 			bid := simpleTrader.books.Bid()
 			ask := simpleTrader.books.Ask()
@@ -240,12 +247,18 @@ func newMarketMakerTrader(mean float64, timeout time.Duration) *marketMakerTrade
 				// we have trades
 				if bid == -1 {
 					fmt.Println("Making it at", ask-1)
-					listChannel <- simpleTrader.makeOrder(1, ask-1, true)
-					listChannel <- simpleTrader.makeOrder(1, ask-1, false)
+					sellOrder, buyOrder := simpleTrader.makeOrder(1, ask-1, true), simpleTrader.makeOrder(1, ask-1, false)
+					simpleTrader.MyTrades[sellOrder.ID] = sellOrder
+					simpleTrader.MyTrades[buyOrder.ID] = buyOrder
+					listChannel <- sellOrder
+					listChannel <- buyOrder
 				} else if (bid+1 < ask) || ask == -1 {
 					fmt.Println("Making it at", bid+1)
-					listChannel <- simpleTrader.makeOrder(1, bid+1, true)
-					listChannel <- simpleTrader.makeOrder(1, bid+1, false)
+					sellOrder, buyOrder := simpleTrader.makeOrder(1, bid+1, true), simpleTrader.makeOrder(1, bid+1, false)
+					simpleTrader.MyTrades[sellOrder.ID] = sellOrder
+					simpleTrader.MyTrades[buyOrder.ID] = buyOrder
+					listChannel <- sellOrder
+					listChannel <- buyOrder
 				}
 			}
 
