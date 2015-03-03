@@ -19,8 +19,17 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+var nilChan chan struct{}
+
 func main() {
 	go startTradeServer()
+
+	go func() {
+		time.Sleep(10 * time.Second)
+		fmt.Println("Launching the Big Guns!")
+		newSimpleTrader(100)
+		<-nilChan
+	}()
 
 	http.Handle("/", http.FileServer(http.Dir("public")))
 
@@ -39,13 +48,17 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
+type trader interface {
+	writeMessage(typ string, data interface{})
+}
+
 type order struct {
-	ID       float64           `json:"id"`
-	Quantity int               `json:"quantity"`
-	Price    float64           `json:"price"`
-	Date     time.Time         `json:"date"`
-	Sell     bool              `json:"sell"`
-	Owner    *traderConnection `json:"-"`
+	ID       float64   `json:"id"`
+	Quantity int       `json:"quantity"`
+	Price    float64   `json:"price"`
+	Date     time.Time `json:"date"`
+	Sell     bool      `json:"sell"`
+	Owner    trader    `json:"-"`
 }
 
 type orderBook []*order
@@ -69,7 +82,7 @@ func (l buyOrderBook) Less(i, j int) bool {
 	return l[i].Price > l[j].Price
 }
 
-type traderList []*traderConnection
+type traderList []trader
 
 func (t traderList) Broadcast(typ string, data interface{}) {
 	for _, v := range t {
@@ -85,14 +98,14 @@ type tradeServer struct {
 }
 
 type connectionInfo struct {
-	*traderConnection
+	trader
 
 	Open bool
 }
 
 type cancelRequest struct {
 	id float64
-	t  *traderConnection
+	t  trader
 }
 
 var (
@@ -109,10 +122,10 @@ func startTradeServer() {
 		select {
 		case c := <-connectionChannel:
 			if c.Open {
-				server.OpenConnections = append(server.OpenConnections, c.traderConnection)
+				server.OpenConnections = append(server.OpenConnections, c.trader)
 			} else {
 				for i, v := range server.OpenConnections {
-					if v == c.traderConnection {
+					if v == c.trader {
 						server.OpenConnections = append(
 							server.OpenConnections[:i],
 							server.OpenConnections[i+1:]...,
