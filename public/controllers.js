@@ -71,9 +71,16 @@ tradingSimulatorControllers.filter('ago', function() {
     }
 })
 
-tradingSimulatorControllers.controller('HomeController', ['$scope', 'tradeSocket',
-  function($scope, tradeSocket) {
+tradingSimulatorControllers.controller('HomeController', ['$scope', 'tradeSocket', '$interval',
+  function($scope, tradeSocket, $interval) {
+      var inflation = 0.005
+      var dividend = 0.002
+
       $scope.me = generatePerson()
+      $interval(function() {
+          $scope.me.cash -= ($scope.me.cash * inflation)
+          $scope.me.cash += ($scope.me.stock * $scope.lastPrice * dividend)
+      }, 1000)
 
       $scope.global = {
           traders: 1,
