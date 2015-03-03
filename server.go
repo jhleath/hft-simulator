@@ -27,7 +27,7 @@ func main() {
 	go func() {
 		time.Sleep(10 * time.Second)
 		fmt.Println("Launching the Big Guns!")
-		newSimpleTrader(100)
+		newHFTTrader(newSimpleTrader(100))
 		<-nilChan
 	}()
 

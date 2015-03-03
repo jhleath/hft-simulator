@@ -65,6 +65,55 @@ func (t *traderBook) Ask() float64 {
 	return t.SellBook[0].Price
 }
 
+type hftTrader struct {
+	autoTrader
+}
+
+func newHFTTrader(a autoTrader) *hftTrader {
+	t := &hftTrader{a}
+
+	connectionChannel <- &connectionInfo{
+		trader: t,
+		Open:   true,
+	}
+
+	return t
+}
+
+func (s *hftTrader) writeMessage(typ string, data interface{}) {
+	if typ == "newOrder" {
+		out := s.newOrder(data.(*order))
+		s.placeOrder(out...)
+	} else if typ == "cancelledOrder" {
+
+	} else if typ == "filledOrder" {
+		m := data.(map[string]interface{})
+		out := s.filledOrder(
+			m["sellOrder"].(*order),
+			m["buyOrder"].(*order),
+			m["quantity"].(int),
+			m["price"].(float64),
+		)
+		s.placeOrder(out...)
+	} else {
+		fmt.Println("Didn't respond to type...", typ)
+	}
+}
+
+func (s *hftTrader) placeOrder(o ...*order) {
+	go func() {
+		for _, v := range o {
+			v.Owner = s
+			listChannel <- v
+		}
+	}()
+}
+
+type autoTrader interface {
+	newOrder(o *order) []*order
+	filledOrder(sell *order, buy *order, q int, p float64) []*order
+}
+
 type simpleTrader struct {
 	Cash  float64
 	Stock int
@@ -77,45 +126,13 @@ type simpleTrader struct {
 func newSimpleTrader(mean float64) *simpleTrader {
 	price := (rand.Float64() * 80) + 60
 
-	t := &simpleTrader{
+	return &simpleTrader{
 		Mean:        mean,
 		Cash:        2000 - (price * 10),
 		Stock:       10,
 		books:       &traderBook{},
 		Outstanding: make(map[float64]*order),
 	}
-
-	connectionChannel <- &connectionInfo{
-		trader: t,
-		Open:   true,
-	}
-
-	return t
-}
-
-func (s *simpleTrader) writeMessage(typ string, data interface{}) {
-	if typ == "newOrder" {
-		s.newOrder(data.(*order))
-	} else if typ == "cancelledOrder" {
-
-	} else if typ == "filledOrder" {
-		m := data.(map[string]interface{})
-		s.filledOrder(
-			m["sellOrder"].(*order),
-			m["buyOrder"].(*order),
-			m["quantity"].(int),
-			m["price"].(float64),
-		)
-	} else {
-		fmt.Println("Didn't respond to type...", typ)
-	}
-}
-
-func (s *simpleTrader) placeOrder(o *order) {
-	s.Outstanding[o.ID] = o
-	go func() {
-		listChannel <- o
-	}()
 }
 
 func (s *simpleTrader) makeOrder(q int, p float64, sell bool) *order {
@@ -125,11 +142,10 @@ func (s *simpleTrader) makeOrder(q int, p float64, sell bool) *order {
 		Price:    p,
 		Sell:     sell,
 		Date:     time.Now(),
-		Owner:    s,
 	}
 }
 
-func (s *simpleTrader) filledOrder(sell *order, buy *order, q int, p float64) {
+func (s *simpleTrader) filledOrder(sell *order, buy *order, q int, p float64) (out []*order) {
 	s.books.filledOrder(sell, q)
 	s.books.filledOrder(buy, q)
 
@@ -145,7 +161,7 @@ func (s *simpleTrader) filledOrder(sell *order, buy *order, q int, p float64) {
 
 		if bid < s.Mean {
 			fmt.Println("REBUYING STOCK AT", bid)
-			s.placeOrder(s.makeOrder(q, bid, false))
+			out = append(out, s.makeOrder(q, bid, false))
 			s.Cash -= float64(q) * bid
 		} else {
 			fmt.Println("Won't rebuy stock...", bid)
@@ -161,7 +177,7 @@ func (s *simpleTrader) filledOrder(sell *order, buy *order, q int, p float64) {
 
 		if ask > s.Mean {
 			fmt.Println("RESELLING STOCK AT", ask)
-			s.placeOrder(s.makeOrder(q, ask, true))
+			out = append(out, s.makeOrder(q, ask, true))
 			s.Stock -= q
 		} else {
 			fmt.Println("Won't resell stock...", ask)
@@ -170,9 +186,10 @@ func (s *simpleTrader) filledOrder(sell *order, buy *order, q int, p float64) {
 	}
 
 	fmt.Println("Trader Update", s.Cash, "dollars", s.Stock, "shares")
+	return
 }
 
-func (s *simpleTrader) newOrder(o *order) {
+func (s *simpleTrader) newOrder(o *order) (out []*order) {
 	s.books.newOrder(o)
 
 	if (o.Sell && o.Price < s.Mean) || (!o.Sell && o.Price > s.Mean) {
@@ -182,9 +199,8 @@ func (s *simpleTrader) newOrder(o *order) {
 			Price:    o.Price,
 			Date:     time.Now(),
 			Sell:     !o.Sell,
-			Owner:    s,
 		}
-		s.placeOrder(newOrder)
+		out = append(out, newOrder)
 		if newOrder.Sell {
 			s.Stock -= o.Quantity
 		} else {
@@ -193,86 +209,19 @@ func (s *simpleTrader) newOrder(o *order) {
 
 		s.Outstanding[newOrder.ID] = newOrder
 	}
+
+	return
 }
 
 type marketMakerTrader struct {
-	Cash  float64
-	Stock int
-	Mean  float64
+	*simpleTrader
 
-	ToWait time.Duration
-	Timer  time.Timer
-
-	Outstanding map[float64]*order
+	Timer time.Timer
 }
 
-func newMarketMakerTrader(mean float64) *marketMakerTrader {
-	t := &marketMakerTrader{
-		Mean:        mean,
-		Outstanding: make(map[float64]*order),
-	}
-
-	connectionChannel <- &connectionInfo{
-		trader: t,
-		Open:   true,
-	}
-
-	return t
-}
-
-func (s *marketMakerTrader) writeMessage(typ string, data interface{}) {
-	if typ == "newOrder" {
-		s.newOrder(data.(*order))
-	} else if typ == "cancelledOrder" {
-
-	} else if typ == "filledOrder" {
-		m := data.(map[string]interface{})
-		s.filledOrder(
-			m["sellOrder"].(*order),
-			m["buyOrder"].(*order),
-			m["quantity"].(int),
-			m["price"].(float64),
-		)
-	}
-}
-
-func (s *marketMakerTrader) placeOrder(o *order) {
-	s.Outstanding[o.ID] = o
-	go func() {
-		listChannel <- o
-	}()
-}
-
-func (s *marketMakerTrader) filledOrder(sell *order, buy *order, q int, p float64) {
-	if _, sok := s.Outstanding[sell.ID]; sok {
-		s.Cash += float64(q) * p
-		delete(s.Outstanding, sell.ID)
-	} else if _, bok := s.Outstanding[buy.ID]; bok {
-		s.Stock += q
-		delete(s.Outstanding, buy.ID)
-	}
-
-	fmt.Println("Trader Update", s.Cash, "dollars", s.Stock, "shares")
-}
-
-func (s *marketMakerTrader) newOrder(o *order) {
-	if (o.Sell && o.Price < s.Mean) || (!o.Sell && o.Price > s.Mean) {
-		newOrder := &order{
-			ID:       rand.Float64(),
-			Quantity: o.Quantity,
-			Price:    o.Price,
-			Date:     time.Now(),
-			Sell:     !o.Sell,
-			Owner:    s,
-		}
-		s.placeOrder(newOrder)
-		if newOrder.Sell {
-			s.Stock -= o.Quantity
-		} else {
-			s.Cash -= float64(o.Quantity) * o.Price
-		}
-
-		s.Outstanding[newOrder.ID] = newOrder
+func newMarketMakerTrader(mean float64, timeout time.Duration) *marketMakerTrader {
+	return &marketMakerTrader{
+		simpleTrader: newSimpleTrader(mean),
 	}
 }
 
