@@ -90,9 +90,15 @@ type connectionInfo struct {
 	Open bool
 }
 
+type cancelRequest struct {
+	id float64
+	t  *traderConnection
+}
+
 var (
 	listChannel       chan *order          = make(chan *order)
 	connectionChannel chan *connectionInfo = make(chan *connectionInfo)
+	cancelChannel     chan cancelRequest   = make(chan cancelRequest)
 	currentOrderId                         = 0
 )
 
@@ -126,6 +132,48 @@ func startTradeServer() {
 
 			// Go through order books and make any trades necessary
 			server.fillOrders()
+		case req := <-cancelChannel:
+			found := false
+			for i, v := range server.SellBook {
+				if v.ID == req.id {
+					v.Owner.writeMessage("cancelledOrder", map[string]interface{}{
+						"id":     req.id,
+						"cancel": true,
+					})
+					server.OpenConnections.Broadcast("cancelledOrder", map[string]interface{}{
+						"id": req.id,
+					})
+					server.SellBook = append(
+						server.SellBook[:i],
+						server.SellBook[i+1:]...,
+					)
+					found = true
+					break
+				}
+			}
+			for i, v := range server.BuyBook {
+				if v.ID == req.id {
+					v.Owner.writeMessage("cancelledOrder", map[string]interface{}{
+						"id":     req.id,
+						"cancel": true,
+					})
+					server.OpenConnections.Broadcast("cancelledOrder", map[string]interface{}{
+						"id": req.id,
+					})
+					server.BuyBook = append(
+						server.BuyBook[:i],
+						server.BuyBook[i+1:]...,
+					)
+					found = true
+					break
+				}
+			}
+			if !found {
+				req.t.writeMessage("cancelledOrder", map[string]interface{}{
+					"id":     req.id,
+					"cancel": false,
+				})
+			}
 		}
 	}
 }
@@ -213,7 +261,8 @@ func (r *traderConnection) writeMessage(typ string, data interface{}) {
 
 type traderMessage struct {
 	Order    *order
-	GetBooks *bool `json:"getbooks"`
+	GetBooks bool `json:"getbooks"`
+	CancelId float64
 }
 
 func newTraderConnection(conn *websocket.Conn) *traderConnection {
@@ -290,8 +339,10 @@ func (r *traderConnection) startConnection() {
 			if tempOrder.Order != nil {
 				tempOrder.Order.Owner = r
 				listChannel <- tempOrder.Order
-			} else if tempOrder.GetBooks != nil {
+			} else if tempOrder.GetBooks {
 
+			} else if tempOrder.CancelId != 0 {
+				cancelChannel <- cancelRequest{tempOrder.CancelId, r}
 			}
 		}
 	}(r.conn, r.dataChan)

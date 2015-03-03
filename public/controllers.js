@@ -167,6 +167,47 @@ tradingSimulatorControllers.controller('HomeController', ['$scope', 'tradeSocket
 
           $scope.lastPrice = data.payload.price;
       })
+
+      tradeSocket.registerHandler("cancelledOrder", function(payload) {          
+          console.log("Cancelling Order");
+          console.dir(payload);
+          // woops
+          payload = payload.payload
+
+          var removeIdFromBooks = function(id, book) {
+              for(var i in book) {
+                  if(book[i].id == id) {
+                      console.log("found")
+                      book.splice(i, 1);
+                      if(payload.cancel == undefined) {
+                          return
+                      }
+                  }
+              }
+          }
+          // someone else's order just got cancelled
+          removeIdFromBooks(payload.id, $scope.sellBook)
+          removeIdFromBooks(payload.id, $scope.buyBook)
+
+          if(payload.cancel != undefined) {
+              for(var i in $scope.myOrders) {
+                  if($scope.myOrders[i].id == payload.id) {
+                      if(payload.cancel) {
+                          $scope.myOrders.splice(i, 1);
+                          break;
+                      } else {
+                          $scope.myOrders[i].cancelling = false;
+                      }
+                  }
+              }
+          }
+      })
+      $scope.cancelOrder = function(o) {
+          tradeSocket.send({
+              CancelId: o.id,
+          })
+          o.cancelling = true;
+      }
       
       // {
       //     date: new Date(),
