@@ -1,0 +1,9 @@
+{
+  "firebase": "hft-presentation",
+  "public": ".",
+  "ignore": [
+    "firebase.json",
+    "**/.*",
+    "**/node_modules/**"
+  ]
+}
