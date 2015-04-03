@@ -54,7 +54,7 @@ func main() {
 			conn, err := upgrader.Upgrade(w, r, nil)
 			if err != nil {
 				log.Println(err)
-				returnz
+				return
 			}
 
 			// We now have a conn...
