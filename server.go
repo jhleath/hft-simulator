@@ -20,6 +20,9 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+	CheckOrigin: func(h *http.Request) bool {
+		return true
+	},
 }
 
 var nilChan chan struct{}
@@ -51,7 +54,7 @@ func main() {
 			conn, err := upgrader.Upgrade(w, r, nil)
 			if err != nil {
 				log.Println(err)
-				return
+				returnz
 			}
 
 			// We now have a conn...
