@@ -111,7 +111,7 @@ func (n *noiseTrader) shutdown() {
 }
 
 func (n *noiseTrader) newDuration() time.Duration {
-	return time.Duration(math.Trunc((rand.Float64()*5)+2)) * time.Second
+	return time.Duration(math.Trunc((rand.Float64()*20)+2)) * time.Second
 }
 
 func (n *noiseTrader) newOrder(o *order) []*order {
