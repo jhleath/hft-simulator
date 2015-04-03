@@ -23,7 +23,7 @@ $(document).ready(function() {
     var handlers = {
         filledOrder: [function(data) {
             // console.log("Filled Order", trades, price);
-            trades++;
+            trades += data.payload.quantity;
             price = data.payload.price;
         }],
         newOrder: [function() {}],
@@ -34,6 +34,9 @@ $(document).ready(function() {
         // console.log("Adding data", trades, price)
         volumeChart.push([{time: new Date().getTime(), y: trades}]);
         priceChart.push([{time: new Date().getTime(), y: price}]);
+        if(window.parent) {
+            window.parent.postMessage({price: price}, "*");
+        }
         trades = 0;
         price = 0;
     }, 500)
