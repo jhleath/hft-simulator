@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"sort"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -26,21 +27,23 @@ var nilChan chan struct{}
 func main() {
 	var (
 		simulate = flag.Int("simulate", 0, "")
+		port     = flag.Int("port", 8008, "")
 	)
 	flag.Parse()
 
 	rand.Seed(time.Now().Unix())
 
 	if *simulate == 0 {
-		go startTradeServer()
+		go startTradeServer(false)
 
-		// go func() {
-		// 	time.Sleep(3 * time.Second)
-		// 	fmt.Println("Launching the Big Guns!")
-		// 	// newHFTTrader(newSimpleTrader(100))
-		// 	newHFTTrader(newMarketMakerTrader(100, 3*time.Second))
-		// 	<-nilChan
-		// }()
+		go func() {
+			time.Sleep(3 * time.Second)
+			fmt.Println("Launching the Big Guns!")
+			newHFTTrader(newSimpleTrader(100))
+			// newHFTTrader(newMarketMakerTrader(100, 3*time.Second))
+			generateNoiseTraders(100)
+			<-nilChan
+		}()
 
 		http.Handle("/", http.FileServer(http.Dir("public")))
 
@@ -56,9 +59,10 @@ func main() {
 			t.startConnection()
 		})
 
-		log.Fatal(http.ListenAndServe(":8080", nil))
+		string_port := ":" + strconv.Itoa(*port)
+		log.Fatal(http.ListenAndServe(string_port, nil))
 	} else {
-		go startTradeServer()
+		go startTradeServer(true)
 
 		go func() {
 			fmt.Println("Launching HFT")
@@ -147,8 +151,10 @@ var (
 	broadcastChannel  chan broadcastRequest = make(chan broadcastRequest)
 )
 
-func startTradeServer() {
-	server := &tradeServer{}
+func startTradeServer(start bool) {
+	server := &tradeServer{
+		Running: start,
+	}
 
 	for {
 		select {
@@ -180,7 +186,7 @@ func startTradeServer() {
 				continue
 			}
 
-			if o.Quantity < 0 {
+			if o.Quantity <= 0 {
 				fmt.Println("Discarded negative quantity transaction")
 				continue
 			}
@@ -398,7 +404,7 @@ func (r *traderConnection) startConnection() {
 				}
 
 				fmt.Println("Error reading from websocket.", err)
-				continue
+				return
 			}
 
 			tempOrder := traderMessage{}

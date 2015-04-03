@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"math"
 	"math/rand"
 	"time"
@@ -54,6 +53,9 @@ func newNoiseTrader(id int, minLatency, maxLatency float64) *noiseTrader {
 				} else {
 					quantity = rand.Intn(10) + 1
 				}
+				if quantity < 0 {
+					t.Timer.Reset(t.newDuration())
+				}
 
 				price := (rand.Float64() * 80) + 60
 				sell := rand.Intn(2)
@@ -77,7 +79,7 @@ func newNoiseTrader(id int, minLatency, maxLatency float64) *noiseTrader {
 					t.Stock -= quantity
 				}
 
-				fmt.Println("Noise trader", t.Id, "able to execute at", price, "for", quantity, "shares", sellBool)
+				// fmt.Println("Noise trader", t.Id, "able to execute at", price, "for", quantity, "shares", sellBool)
 
 				randId := rand.Float64()
 				t.MyTrades[randId] = true
@@ -126,7 +128,7 @@ func (n *noiseTrader) filledOrder(sell, buy *order, q int, p float64) []*order {
 			n.Stock += q
 		}
 
-		fmt.Println("Noise trader", n.Id, "has inventory", n.Cash, n.Stock)
+		// fmt.Println("Noise trader", n.Id, "has inventory", n.Cash, n.Stock)
 		n.LastPrice = p
 	}()
 	return nil

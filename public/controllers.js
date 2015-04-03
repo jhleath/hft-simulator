@@ -177,7 +177,7 @@ tradingSimulatorControllers.controller('HomeController', ['$scope', 'tradeSocket
                       }
 
                       if(cb == undefined) {
-                          if(book[i].quantity == 0) {
+                          if(book[i].quantity == 0 || book[i].quantity < 0) {
                               book.splice(i, 1);
                           }
 
